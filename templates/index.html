@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>RAG Chat UI</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #chat-box { border: 1px solid #ccc; height: 400px; overflow-y: scroll; padding: 10px; margin-bottom: 10px; }
+        #user-input { width: 80%; padding: 10px; }
+        #send-btn { padding: 10px; }
+        .message { margin-bottom: 10px; }
+        .user { text-align: right; color: blue; }
+        .bot { text-align: left; color: green; }
+        .thinking { text-align: left; color: gray; font-style: italic; }
+    </style>
+</head>
+<body>
+    <h1>RAG Chat Application</h1>
+    <div id="chat-box"></div>
+    <input type="text" id="user-input" placeholder="Type your question...">
+    <button id="send-btn">Send</button>
+
+    <script>
+        const chatBox = document.getElementById('chat-box');
+        const userInput = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
+
+        function addMessage(text, className) {
+            const msg = document.createElement('div');
+            msg.className = `message ${className}`;
+            msg.textContent = text;
+            chatBox.appendChild(msg);
+            chatBox.scrollTop = chatBox.scrollHeight;
+            return msg;
+        }
+
+        async function handleQuery() {
+            const question = userInput.value.trim();
+            if (!question) return;
+            addMessage(question, 'user');
+            userInput.value = '';
+            userInput.disabled = true;
+            sendBtn.disabled = true;
+
+            const thinkingMsg = addMessage('Thinking...', 'thinking');
+
+            try {
+                const response = await fetch('/api/query', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question })
+                });
+
+                const reader = response.body.getReader();
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const chunk = new TextDecoder().decode(value);
+                    const data = JSON.parse(chunk);
+                    if (data.status === 'thinking') {
+                        thinkingMsg.textContent = 'Thinking...';
+                    } else if (data.status === 'complete') {
+                        thinkingMsg.remove();
+                        addMessage(data.response, 'bot');
+                    } else if (data.status === 'error') {
+                        thinkingMsg.remove();
+                        addMessage('Error: ' + data.error, 'bot');
+                    }
+                }
+            } catch (error) {
+                thinkingMsg.remove();
+                addMessage('Error: ' + error.message, 'bot');
+            } finally {
+                userInput.disabled = false;
+                sendBtn.disabled = false;
+                userInput.focus();
+            }
+        }
+
+        sendBtn.addEventListener('click', handleQuery);
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleQuery();
+        });
+    </script>
+</body>
+</html>
